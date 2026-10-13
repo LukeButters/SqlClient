@@ -773,6 +773,7 @@ namespace Microsoft.Data.SqlClient.ConnectionPool
 
                 try
                 {
+                    // INVESTIGATION: Only one thread drains _pendingOpens, so requests are processed strictly one at a time.
                     started = Interlocked.CompareExchange(ref _pendingOpensWaiting, 1, 0) == 0;
                     if (!started)
                     {
@@ -781,6 +782,7 @@ namespace Microsoft.Data.SqlClient.ConnectionPool
 
                     while (_pendingOpens.TryDequeue(out next))
                     {
+                        // INVESTIGATION: Cancelled requests stay queued and are only skipped here; cancelling frees the caller, not this thread.
                         if (next.Completion.Task.IsCompleted)
                         {
                             continue;
@@ -793,6 +795,7 @@ namespace Microsoft.Data.SqlClient.ConnectionPool
                         }
                         else
                         {
+                            // INVESTIGATION: Remaining time is only computed on dequeue, so time spent queued behind a hung request is never timed out.
                             delay = (uint)Math.Max(ADP.TimerRemainingMilliseconds(next.DueTime), 0);
                         }
 
@@ -803,6 +806,8 @@ namespace Microsoft.Data.SqlClient.ConnectionPool
                         try
                         {
                             ADP.SetCurrentTransaction(next.Completion.Task.AsyncState as Transaction);
+                            // INVESTIGATION: Runs synchronously on the only WaitForPendingOpen thread. With allowCreate the physical open
+                            // (TCP + TLS handshake) happens inline, so a slow handshake blocks every queued open behind it.
                             timeout = !TryGetConnection(
                                 next.Owner,
                                 delay,
@@ -932,6 +937,9 @@ namespace Microsoft.Data.SqlClient.ConnectionPool
                     owningObject,
                     taskCompletionSource,
                     timeout);
+            // INVESTIGATION: Queued here with a DueTime, but nothing enforces it until WaitForPendingOpen dequeues this request.
+            // If that single thread is blocked creating a connection for an earlier request, this open waits for it,
+            // even if idle connections are returned to the pool meanwhile.
             _pendingOpens.Enqueue(pendingGetConnection);
 
             // it is better to StartNew too many times than not enough
