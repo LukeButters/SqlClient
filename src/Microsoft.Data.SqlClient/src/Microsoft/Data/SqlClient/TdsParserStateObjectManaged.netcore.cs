@@ -373,13 +373,18 @@ namespace Microsoft.Data.SqlClient.ManagedSni
 
         internal override uint PostReadAsyncForMars(TdsParserStateObject physicalStateObject) => TdsEnums.SNI_SUCCESS_IO_PENDING;
 
+        // Test hook: lets a test turn the TLS handshake timeout off to show the behavior without it.
+        internal static bool TlsHandshakeTimeoutEnabled = true;
+
         internal override uint EnableSsl(ref uint info, bool tlsFirst, string serverCertificateFilename)
         {
             SniHandle sessionHandle = GetSessionSNIHandleHandleOrThrow();
             try
             {
                 SqlClientEventSource.Log.TryTraceEvent("TdsParserStateObjectManaged.EnableSsl | Info | Session Id {0}", sessionHandle.ConnectionId);
-                return sessionHandle.EnableSsl(info);
+                int timeoutMilliseconds = GetTimeoutRemaining();
+                using var timeout = timeoutMilliseconds < 0 || !TlsHandshakeTimeoutEnabled ? new CancellationTokenSource() : new CancellationTokenSource(timeoutMilliseconds);
+                return sessionHandle.EnableSsl(info, timeout.Token);
             }
             catch (Exception e)
             {

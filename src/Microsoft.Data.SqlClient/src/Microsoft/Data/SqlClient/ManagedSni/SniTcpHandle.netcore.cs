@@ -25,6 +25,9 @@ namespace Microsoft.Data.SqlClient.ManagedSni
     /// </summary>
     internal sealed class SniTcpHandle : SniPhysicalHandle
     {
+        // Test hook: the TLS handshake below reads with no timeout, so a test can pause the network here.
+        internal static Action BeforeTlsHandshake;
+
         private readonly string _targetServer;
         private readonly object _sendSync;
         private readonly Socket _socket;
@@ -160,6 +163,8 @@ namespace Microsoft.Data.SqlClient.ManagedSni
                     // We will always first try to connect with serverName as before and let DNS resolve the serverName.
                     // If DNS resolution fails, we will try with IPs in the DNS cache if they exist. We try with cached IPs based on IPAddressPreference.
                     // Exceptions will be thrown to the caller and be handled as before.
+                    // INVESTIGATION: The TCP connection is opened here, bounded by timeout. Pre-login then follows in
+                    // Receive and the TLS handshake in EnableSsl.
                     try
                     {
                         if (parallel)
@@ -722,21 +727,22 @@ namespace Microsoft.Data.SqlClient.ManagedSni
         /// <summary>
         /// Enable SSL
         /// </summary>
-        public override uint EnableSsl(uint options)
+        public override uint EnableSsl(uint options, CancellationToken cancellationToken)
         {
             using (SqlClientSNIEventScope.Create(nameof(SniHandle)))
             {
                 _validateCert = (options & TdsEnums.SNI_SSL_VALIDATE_CERTIFICATE) != 0;
+                BeforeTlsHandshake?.Invoke();
 
                 try
                 {
                     if (_tlsFirst)
                     {
-                        AuthenticateAsClient(_sslStream, _targetServer, null);
+                        AuthenticateAsClient(_sslStream, _targetServer, null, cancellationToken);
                     }
                     else
                     {
-                        _sslStream.AuthenticateAsClient(_targetServer, null, s_supportedProtocols, false);
+                        AuthenticateAsClientOverTds(_sslStream, _targetServer, cancellationToken);
                     }
                     if (_sslOverTdsStream is not null)
                     {
@@ -752,6 +758,11 @@ namespace Microsoft.Data.SqlClient.ManagedSni
                 {
                     SqlClientEventSource.Log.TrySNITraceEvent(nameof(SniTcpHandle), EventType.ERR, "Connection Id {0}, Invalid Operation Exception occurred: {1}", args0: _connectionId, args1: ioe?.Message);
                     return ReportTcpSNIError(ioe);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    SqlClientEventSource.Log.TrySNITraceEvent(nameof(SniTcpHandle), EventType.ERR, "Connection Id {0}, TLS handshake timed out.", args0: _connectionId);
+                    return ReportTcpSNIError(0, SniCommon.ConnTimeoutError, Strings.SNI_ERROR_11);
                 }
 
                 _stream = _sslStream;

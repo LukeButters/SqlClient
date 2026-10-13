@@ -7,6 +7,8 @@
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.6.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="Octopus.TestPortForwarder" Version="9.0.2213" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="xunit.runner.console" Version="2.9.3" />

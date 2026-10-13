@@ -326,7 +326,7 @@ namespace Microsoft.Data.SqlClient.ManagedSni
             _sendCallback = sendCallback;
         }
 
-        public override uint EnableSsl(uint options)
+        public override uint EnableSsl(uint options, CancellationToken cancellationToken)
         {
             using (SqlClientSNIEventScope.Create(nameof(SniNpHandle)))
             {
@@ -335,12 +335,12 @@ namespace Microsoft.Data.SqlClient.ManagedSni
                 {
                     if (_tlsFirst)
                     {
-                        AuthenticateAsClient(_sslStream, _targetServer, null);
+                        AuthenticateAsClient(_sslStream, _targetServer, null, cancellationToken);
                     }
                     else
                     {
                         // TODO: Resolve whether to send _serverNameIndication or _targetServer. _serverNameIndication currently results in error. Why?
-                        _sslStream.AuthenticateAsClient(_targetServer, null, s_supportedProtocols, false);
+                        AuthenticateAsClientOverTds(_sslStream, _targetServer, cancellationToken);
                     }
                     if (_sslOverTdsStream is not null)
                     {

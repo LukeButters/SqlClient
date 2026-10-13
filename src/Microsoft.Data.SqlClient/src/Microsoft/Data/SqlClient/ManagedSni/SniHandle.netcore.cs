@@ -34,9 +34,19 @@ namespace Microsoft.Data.SqlClient.ManagedSni
             await sslStream.AuthenticateAsClientAsync(sslClientOptions, token);
         }
 
-        protected static void AuthenticateAsClient(SslStream sslStream, string serverNameIndication, X509CertificateCollection certificate)
+        protected static void AuthenticateAsClient(SslStream sslStream, string serverNameIndication, X509CertificateCollection certificate, CancellationToken token)
         {
-            AuthenticateAsClientAsync(sslStream, serverNameIndication, certificate, CancellationToken.None).ConfigureAwait(false).GetAwaiter().GetResult();
+            AuthenticateAsClientAsync(sslStream, serverNameIndication, certificate, token).ConfigureAwait(false).GetAwaiter().GetResult();
+        }
+
+        protected static void AuthenticateAsClientOverTds(SslStream sslStream, string targetHost, CancellationToken token)
+        {
+            SslClientAuthenticationOptions sslClientOptions = new()
+            {
+                TargetHost = targetHost,
+                EnabledSslProtocols = s_supportedProtocols,
+            };
+            sslStream.AuthenticateAsClientAsync(sslClientOptions, token).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -89,7 +99,7 @@ namespace Microsoft.Data.SqlClient.ManagedSni
         /// <summary>
         /// Enable SSL
         /// </summary>
-        public abstract uint EnableSsl(uint options);
+        public abstract uint EnableSsl(uint options, CancellationToken cancellationToken);
 
         /// <summary>
         /// Disable SSL
